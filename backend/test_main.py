@@ -58,3 +58,33 @@ def test_invalid_dates_overlap_and_draft(client,monkeypatch):
     assert r.status_code==200
     assert r.json()["sent"] is False
     assert "cour" in r.json()["text"]
+
+
+def test_supabase_membership_auth(client,monkeypatch):
+    import main
+    from sqlalchemy.orm import Session
+    uid=uuid4()
+    with Session(engine) as s,s.begin():
+        s.add(main.Membership(user_id=uid,owner="arezki"))
+    monkeypatch.setattr(main,"AUTH_MODE","supabase")
+    monkeypatch.setattr(main,"verify_supabase_user",lambda token: uid)
+    assert client.get("/workspace",headers=headers()).json()["owner"]=="arezki"
+    assert client.post("/bookings/sarah-b0/question",headers=headers(),json={"text":"parking"}).status_code==404
+    monkeypatch.setattr(main,"verify_supabase_user",lambda token: uuid4())
+    assert client.get("/workspace",headers=headers()).status_code==403
+
+def test_supabase_remote_validation(monkeypatch):
+    import main,httpx
+    from fastapi import HTTPException
+    uid=uuid4()
+    monkeypatch.setattr(main,"SUPABASE_URL","https://test.supabase.co")
+    def response(status,payload):
+        return httpx.Response(status,json=payload,request=httpx.Request("GET","https://test.supabase.co/auth/v1/user"))
+    monkeypatch.setattr(main.httpx,"get",lambda *a,**k:response(200,{"id":str(uid)}))
+    assert main.verify_supabase_user("token")==uid
+    monkeypatch.setattr(main.httpx,"get",lambda *a,**k:response(401,{}))
+    with pytest.raises(HTTPException) as exc: main.verify_supabase_user("expired")
+    assert exc.value.status_code==401
+    monkeypatch.setattr(main.httpx,"get",lambda *a,**k:response(503,{}))
+    with pytest.raises(HTTPException) as exc: main.verify_supabase_user("token")
+    assert exc.value.status_code==503
