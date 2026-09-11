@@ -1,0 +1,19 @@
+# Standalone alternative: docker compose --env-file .env -f compose.supabase.yaml up --build
+services:
+  api:
+    build: ./backend
+    environment:
+      AUTH_MODE: supabase
+      DATABASE_URL: ${SUPABASE_DATABASE_URL:?Set Supabase server connection string}
+      SUPABASE_URL: https://hewasycyugomgncotgoe.supabase.co
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:?Set publishable key}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      MISTRAL_MODEL: ${MISTRAL_MODEL:-mistral-small-latest}
+    ports:
+      - "127.0.0.1:8000:8000"
+  web:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - api
