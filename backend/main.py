@@ -11,15 +11,26 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import create_engine, String, JSON, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session
 
-engine = create_engine(os.environ["DATABASE_URL"])
-tokens = {o: os.environ[o.upper()+"_TOKEN"] for o in ("arezki","sarah")}
-if len(set(tokens.values())) != 2 or any(len(v)<24 for v in tokens.values()):
+AUTH_MODE = os.getenv("AUTH_MODE", "demo")
+if AUTH_MODE not in ("demo", "supabase"): raise RuntimeError("Invalid AUTH_MODE")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
+if AUTH_MODE == "supabase" and (not SUPABASE_URL.startswith("https://") or not SUPABASE_KEY):
+    raise RuntimeError("Supabase HTTPS URL and publishable key required")
+engine = create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
+tokens = {o: os.environ.get(o.upper()+"_TOKEN", "") for o in ("arezki","sarah")} if AUTH_MODE == "demo" else {}
+if AUTH_MODE == "demo" and (len(set(tokens.values())) != 2 or any(len(v)<24 for v in tokens.values())):
     raise RuntimeError("Provide two distinct tokens of at least 24 characters")
 class Base(DeclarativeBase): pass
 class Workspace(Base):
     __tablename__="cleora_demo_workspaces"
     owner: Mapped[str] = mapped_column(String, primary_key=True)
     data: Mapped[dict] = mapped_column(JSON)
+
+class Membership(Base):
+    __tablename__ = "cleora_memberships"
+    user_id: Mapped[UUID] = mapped_column(primary_key=True)
+    owner: Mapped[str] = mapped_column(String)
 
 def seed(owner):
     today=date.today()
@@ -34,15 +45,31 @@ def seed(owner):
 
 @asynccontextmanager
 async def lifespan(app):
-    Base.metadata.create_all(engine)
+    if AUTH_MODE == "demo": Base.metadata.create_all(engine)
     with Session(engine) as s, s.begin():
-        for o in tokens:
+        for o in ("arezki", "sarah"):
             if s.get(Workspace,o) is None: s.add(Workspace(owner=o,data=seed(o)))
     yield
 app=FastAPI(title="Cléora — démonstrateur PMS",lifespan=lifespan)
-app.add_middleware(CORSMiddleware,allow_origins=["http://localhost:3000"],allow_methods=["GET","POST"],allow_headers=["Authorization","Content-Type"])
+app.add_middleware(CORSMiddleware,allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:3000").split(","),allow_methods=["GET","POST"],allow_headers=["Authorization","Content-Type"])
 bearer=HTTPBearer()
+def verify_supabase_user(access_token):
+    try:
+        r=httpx.get(SUPABASE_URL+"/auth/v1/user",
+            headers={"apikey":SUPABASE_KEY,"Authorization":"Bearer "+access_token},timeout=10)
+        if r.status_code in (401,403): raise HTTPException(401,"Session expirée ou invalide")
+        r.raise_for_status()
+        return UUID(r.json()["id"])
+    except (httpx.HTTPError,ValueError,KeyError):
+        raise HTTPException(503,"Service d'authentification indisponible")
+
 def auth(c:HTTPAuthorizationCredentials=Depends(bearer)):
+    if AUTH_MODE == "supabase":
+        uid=verify_supabase_user(c.credentials)
+        with Session(engine) as s:
+            membership=s.get(Membership,uid)
+            if not membership: raise HTTPException(403,"Compte non rattaché à un espace propriétaire")
+            return membership.owner
     for o,t in tokens.items():
         if secrets.compare_digest(t,c.credentials): return o
     raise HTTPException(401,"Accès refusé")
@@ -88,6 +115,39 @@ class MockPMSConnector:
         for channel in ("email","sms"):
             d["notifications"].append({"event_id":p["event_id"],"channel":channel,"status":"simulated","text":e.kind+" : "+b["id"]})
         return True
+
+class Login(BaseModel):
+    email: str=Field(min_length=3,max_length=254)
+    password: str=Field(min_length=1,max_length=1024)
+
+@app.get("/config")
+def config():
+    return {"auth_mode":AUTH_MODE}
+
+@app.post("/auth/login")
+def login(body:Login):
+    if AUTH_MODE != "supabase": raise HTTPException(404,"Connexion Supabase désactivée")
+    try:
+        r=httpx.post(SUPABASE_URL+"/auth/v1/token?grant_type=password",
+            headers={"apikey":SUPABASE_KEY},
+            json=body.model_dump(),timeout=10)
+        if r.status_code in (400,401,403): raise HTTPException(401,"Identifiants invalides ou email non confirmé")
+        if r.status_code == 429: raise HTTPException(429,"Trop de tentatives, réessayez plus tard")
+        r.raise_for_status()
+        payload=r.json()
+        return {"access_token":payload["access_token"],"expires_in":payload["expires_in"]}
+    except (httpx.HTTPError,KeyError,ValueError):
+        raise HTTPException(503,"Service d'authentification indisponible")
+
+@app.post("/auth/logout")
+def logout(c:HTTPAuthorizationCredentials=Depends(bearer)):
+    if AUTH_MODE == "supabase":
+        try:
+            r=httpx.post(SUPABASE_URL+"/auth/v1/logout",
+                headers={"apikey":SUPABASE_KEY,"Authorization":"Bearer "+c.credentials},timeout=10)
+            if r.status_code not in (200,204,401,403): r.raise_for_status()
+        except httpx.HTTPError: raise HTTPException(503,"Déconnexion distante indisponible")
+    return {"status":"signed_out"}
 
 @app.get("/health")
 def health(): return {"status":"ok","mode":"simulation"}
