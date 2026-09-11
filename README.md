@@ -20,5 +20,6 @@ docker compose up --build
 
 Ouvrir http://localhost:3000 et saisir le token du propriétaire choisi.
 
-Prototype local uniquement : authentification Supabase Auth, intégrations réelles Brevo/Twilio,
-worker de rappels et connexion PMS réelle restent à développer. Aucun projet Supabase existant n'a été modifié.
+**[Connexion Supabase CLEORA](docs/SUPABASE.md)** : tables et RLS appliquées, données fictives chargées, connexion email/mot de passe ajoutée. Renseigner la connexion DB privée et créer/rattacher les comptes avant lancement.
+
+Prototype : intégrations réelles Brevo/Twilio, worker de rappels et connexion PMS réelle restent à développer.
