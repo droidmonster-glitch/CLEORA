@@ -46,14 +46,9 @@ Chaque brouillon reste à valider, aucun envoi externe implémenté.
 8. Les tests CI couvrent aussi les accès croisés, dates invalides et chevauchements.
 
 ## Supabase
-Aucun projet Cléora n'a été identifié lors de l'inspection ; aucun projet existant n'a été modifié.
-Le prototype utilise SQLAlchemy/PostgreSQL, sans dépendre du SDK Supabase.
-Pour une base Supabase dédiée : configurer DATABASE_URL côté serveur avec la chaîne de connexion
-appropriée et SSL. Ne jamais exposer les identifiants DB au frontend.
-Avant connexion : appliquer la migration `supabase/migrations/001_demo.sql` avec un rôle administrateur.
-Celle-ci bloque les rôles publics Supabase ; le backend utilise un rôle serveur.
-L'authentification Supabase Auth et les politiques par utilisateur restent à implémenter.
-Les tokens fixes servent uniquement au développement local, pas à un SaaS public.
+Le projet CLEORA est configuré. Suivre [le guide Supabase](SUPABASE.md) pour renseigner la connexion privée, créer les comptes Auth et les rattacher aux espaces.
+La configuration alternative compose.supabase.yaml active email/mot de passe et la vérification serveur des sessions.
+Le mode local par tokens reste disponible avec compose.yaml.
 
 ## n8n, Twilio, Brevo : état exact
 `docker compose --profile automation up -d` démarre n8n sur http://localhost:5678.
@@ -66,7 +61,7 @@ workflow n8n authentifié et surveillance des échecs.
 
 ## Limites de cette livraison
 C'est un prototype exécutable proposé, pas la phase 1 commercialisable complète.
-Pas de compte SaaS autonome, envoi réel, modification des fiches, validation/envoi des brouillons,
+Supabase Auth intégré, inscription autonome non incluse. Pas de compte SaaS autonome, envoi réel, modification des fiches, validation/envoi des brouillons,
 PMS réel, agent vocal ou serrure. Pas de déploiement public.
 Stockage de démonstration : un document JSON par propriétaire, à normaliser par migrations pour la V1.
 Le connecteur MockPMSConnector concentre les règles du simulateur ; l'adaptateur Smoobu reste à écrire.
