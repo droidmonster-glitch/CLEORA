@@ -1,0 +1,46 @@
+{
+  "name": "Cléora — notification simulée",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "start",
+      "name": "Démarrer manuellement",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json: {event_id: 'demo-event-001', kind: 'created', owner: 'arezki', channel: 'email', provider: 'Brevo', status: 'simulated', sent: false}}];"
+      },
+      "id": "mock",
+      "name": "Préparer une notification fictive",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Démarrer manuellement": {
+      "main": [
+        [
+          {
+            "node": "Préparer une notification fictive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
